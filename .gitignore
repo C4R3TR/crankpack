@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+
+# local env
+.env*.local
+*.tsbuildinfo
+.DS_Store
+npm-debug.*
+
+# Capacitor generated (keep ios/ committed after first add)
+.gradle/
+*.orig.*

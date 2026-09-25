@@ -1,0 +1,167 @@
+import { useEffect, useState } from 'react';
+
+import { useAppStore, useDisplayedTelemetry } from '../store';
+import { crankHint } from '../units';
+import { Chart } from '../Chart';
+
+export function PowerScreen() {
+  const t = useDisplayedTelemetry();
+  const connection = useAppStore((s) => s.connection);
+  const history = useAppStore((s) => s.history);
+  const setDemoCranking = useAppStore((s) => s.setDemoCranking);
+  const remainingAh = t.remainingMah / 1000;
+  const low = t.batteryPct < 20;
+
+  return (
+    <section className="screen">
+      <Header title="Power" />
+
+      <div className="power-hero">
+        <BatteryDial pct={t.batteryPct} />
+      </div>
+        <div className="hero-meta" style={{ textAlign: 'center', marginBottom: 16 }}>
+        {t.charging ? 'Charging the pack' : low ? 'Low — crank to charge' : 'Ready to crank'}
+      </div>
+
+      <div className="stats">
+        <div className="stat">
+          <strong>{t.crankW.toFixed(1)} W</strong>
+          <span>Crank</span>
+        </div>
+        <div className="stat">
+          <strong>{t.batteryV.toFixed(2)} V</strong>
+          <span>Pack</span>
+        </div>
+        <div className="stat">
+          <strong>{remainingAh.toFixed(2)} Ah</strong>
+          <span>Left</span>
+        </div>
+      </div>
+
+      {connection === 'demo' ? (
+        <div className="group">
+          <div className="group-pad">
+            <div className="meter">
+              <span style={{ width: `${Math.min(100, (t.crankW / 12) * 100)}%` }} />
+            </div>
+            <p className="hint">{crankHint(t.crankW, t.charging)}</p>
+          </div>
+          <button
+            type="button"
+            className={`btn ${t.charging ? 'charging' : ''}`}
+            onPointerDown={() => setDemoCranking(true)}
+            onPointerUp={() => setDemoCranking(false)}
+            onPointerCancel={() => setDemoCranking(false)}
+            onPointerLeave={() => setDemoCranking(false)}
+          >
+            Hold to Crank
+          </button>
+        </div>
+      ) : null}
+
+      <div className="group">
+        <div className="cell">
+          <span className="cell-label">Crank current</span>
+          <span className="cell-value strong">{t.crankA.toFixed(2)} A</span>
+        </div>
+        <div className="cell">
+          <span className="cell-label">USB output</span>
+          <span className="cell-value strong">{t.usbW.toFixed(1)} W</span>
+        </div>
+        <div className="cell">
+          <span className="cell-label">USB current</span>
+          <span className="cell-value">{t.usbA.toFixed(2)} A</span>
+        </div>
+      </div>
+
+      <div className="group group-pad">
+        <Chart
+          label="Crank power"
+          values={history.map((p) => p.crankW)}
+          unit=" W"
+          tone="live"
+          emptyText="Crank to start the trace"
+        />
+      </div>
+
+      <div className="group group-pad">
+        <Chart
+          label="Pack level"
+          values={history.map((p) => p.batteryPct)}
+          unit="%"
+          decimals={0}
+          emptyText="Waiting for samples"
+        />
+      </div>
+    </section>
+  );
+}
+
+function BatteryDial({ pct }: { pct: number }) {
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.min(100, Math.max(0, pct));
+  // Start at zero on the first paint so the CSS transition on stroke-dashoffset
+  // sweeps the arc up to the real level.
+  const [swept, setSwept] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setSwept(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const offset = c * (1 - (swept ? clamped : 0) / 100);
+  const ticks = Array.from({ length: 36 }, (_, i) => {
+    const a = ((i / 36) * 360 - 90) * (Math.PI / 180);
+    const inner = i % 3 === 0 ? 62 : 64;
+    return {
+      x1: 70 + Math.cos(a) * inner,
+      y1: 70 + Math.sin(a) * inner,
+      x2: 70 + Math.cos(a) * 67,
+      y2: 70 + Math.sin(a) * 67,
+    };
+  });
+  return (
+    <svg className="dial" viewBox="0 0 140 140" role="img" aria-label={`Pack ${Math.round(clamped)} percent`}>
+      {ticks.map((tick, i) => (
+        <line key={i} className="dial-tick" x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2} />
+      ))}
+      <circle className="dial-track" cx="70" cy="70" r={r} />
+      <circle
+        className="dial-value"
+        cx="70"
+        cy="70"
+        r={r}
+        strokeDasharray={c}
+        strokeDashoffset={offset}
+        transform="rotate(-90 70 70)"
+      />
+      <text className="dial-num" x="70" y="74" textAnchor="middle">
+        {Math.round(clamped)}
+      </text>
+      <text className="dial-unit" x="70" y="92" textAnchor="middle">
+        %
+      </text>
+    </svg>
+  );
+}
+
+export function Header({ title }: { title: string }) {
+  const connection = useAppStore((s) => s.connection);
+  const t = useDisplayedTelemetry();
+  const live = connection === 'connected' || connection === 'demo';
+  const label =
+    connection === 'connected'
+      ? t.deviceName
+      : connection === 'demo'
+        ? 'Demo Pack'
+        : connection === 'scanning'
+          ? 'Scanning'
+          : connection === 'connecting'
+            ? 'Connecting'
+            : 'Offline';
+  return (
+    <div className="top">
+      <h1 className="title">{title}</h1>
+      <div className={`status-text ${live ? 'live' : ''}`}>{label}</div>
+    </div>
+  );
+}

@@ -1,0 +1,17 @@
+{
+  "appId": "com.crankpack.app",
+  "appName": "CrankPack",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#101410",
+    "preferredContentMode": "mobile",
+    "scheme": "CrankPack"
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#101410"
+    }
+  }
+}
