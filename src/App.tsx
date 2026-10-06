@@ -43,16 +43,21 @@ export function App() {
 
   useEffect(() => {
     if (connection !== 'demo') return;
-    const seed = useAppStore.getState().rawTelemetry.timestamp
-      ? useAppStore.getState().rawTelemetry
-      : null;
-    ingestTelemetry(createDemoTelemetry(seed, demoCranking, 0.5));
+    
+    const updateInterval = 250;
+    const dtSec = updateInterval / 1000;
+    
+    const getPrev = () => {
+      const state = useAppStore.getState();
+      return state.rawTelemetry.timestamp ? state.rawTelemetry : null;
+    };
+    
+    ingestTelemetry(createDemoTelemetry(getPrev(), demoCranking, dtSec));
+    
     const id = window.setInterval(() => {
-      const prev = useAppStore.getState().rawTelemetry.timestamp
-        ? useAppStore.getState().rawTelemetry
-        : null;
-      ingestTelemetry(createDemoTelemetry(prev, demoCranking, 0.5));
-    }, 500);
+      ingestTelemetry(createDemoTelemetry(getPrev(), demoCranking, dtSec));
+    }, updateInterval);
+    
     return () => window.clearInterval(id);
   }, [connection, demoCranking, ingestTelemetry]);
 
