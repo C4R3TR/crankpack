@@ -444,15 +444,28 @@ input:focus {
   height: 100%;
   overflow: visible;
 }
-.chart-stop-top { stop-color: var(--chart-ink); stop-opacity: 0.26; }
-.chart-stop-bottom { stop-color: var(--chart-ink); stop-opacity: 0.01; }
+.chart-stop-top { stop-color: var(--chart-ink); stop-opacity: 0.32; }
+.chart-stop-mid { stop-color: var(--chart-ink); stop-opacity: 0.12; }
+.chart-stop-bottom { stop-color: var(--chart-ink); stop-opacity: 0.02; }
+.chart-grid {
+  stroke: var(--separator);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.5;
+  vector-effect: non-scaling-stroke;
+}
 .chart-line {
   fill: none;
   stroke: var(--chart-ink);
-  stroke-width: 2;
+  stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
-  animation: draw 0.9s var(--ease) both;
+  animation: draw 0.7s var(--ease) both;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+}
+.chart-fill {
+  opacity: 0;
+  animation: fade-in 0.5s var(--ease) 0.3s forwards;
 }
 .chart-accent { --chart-ink: var(--accent); }
 .chart-live { --chart-ink: var(--live-fill); }
@@ -463,23 +476,42 @@ input:focus {
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
   line-height: 1.5;
+  opacity: 0.85;
+  transition: opacity 0.3s var(--ease);
+}
+.chart-bound-top {
+  margin-bottom: 2px;
+}
+.chart-bound-bottom {
+  margin-top: 2px;
+}
+.chart-block:hover .chart-bound {
+  opacity: 1;
 }
 
 .chart-dot-wrap {
   position: absolute;
   width: 0;
   height: 0;
-  animation: fade-in 0.4s var(--ease) 0.7s both;
+  animation: fade-in 0.35s var(--ease) 0.5s both;
+  transition: left 0.25s var(--ease), top 0.25s var(--ease);
 }
 .chart-dot {
   position: absolute;
-  left: -4px;
-  top: -4px;
-  width: 8px;
-  height: 8px;
+  left: -5px;
+  top: -5px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--chart-ink, var(--accent));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chart-ink, var(--accent)) 22%, transparent);
+  box-shadow: 
+    0 0 0 3px color-mix(in srgb, var(--chart-ink, var(--accent)) 25%, transparent),
+    0 2px 8px color-mix(in srgb, var(--chart-ink, var(--accent)) 35%, transparent);
+  animation: dot-pulse 2.5s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.9; }
 }
 .chart-block + .chart-block { margin-top: 20px; }
 .empty {
@@ -552,7 +584,7 @@ input:focus {
   stroke: var(--accent);
   stroke-width: 8;
   stroke-linecap: round;
-  transition: stroke-dashoffset 0.6s var(--ease);
+  transition: stroke-dashoffset 0.45s var(--ease);
 }
 .dial-tick { stroke: var(--tick); stroke-width: 1.4; }
 .dial-num {
@@ -759,22 +791,21 @@ input:focus {
   to { opacity: 1; }
 }
 @keyframes rise {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
-/* Screen entry: the sections stagger in once per navigation, which is
-   infrequent enough to stay out of the way (motion.md > Best practices). */
+/* Screen entry: fast, fluid staggered animations for snappy onboarding feel */
 .screen > * {
-  animation: rise 0.42s var(--ease) both;
+  animation: rise 0.32s var(--ease) both;
 }
 .screen > *:nth-child(1) { animation-delay: 0ms; }
-.screen > *:nth-child(2) { animation-delay: 40ms; }
-.screen > *:nth-child(3) { animation-delay: 80ms; }
-.screen > *:nth-child(4) { animation-delay: 120ms; }
-.screen > *:nth-child(5) { animation-delay: 160ms; }
-.screen > *:nth-child(6) { animation-delay: 200ms; }
-.screen > *:nth-child(n + 7) { animation-delay: 240ms; }
-.screen-hike > * { animation: fade-in 0.35s var(--ease) both; }
+.screen > *:nth-child(2) { animation-delay: 30ms; }
+.screen > *:nth-child(3) { animation-delay: 55ms; }
+.screen > *:nth-child(4) { animation-delay: 75ms; }
+.screen > *:nth-child(5) { animation-delay: 95ms; }
+.screen > *:nth-child(6) { animation-delay: 115ms; }
+.screen > *:nth-child(n + 7) { animation-delay: 135ms; }
+.screen-hike > * { animation: fade-in 0.28s var(--ease) both; }
 
 .cell { transition: background 0.16s var(--ease); }
 .seg button { transition: color 0.18s var(--ease); }
@@ -788,14 +819,16 @@ input:focus {
   .status-text.live::before,
   .btn.charging,
   .chart-line,
+  .chart-fill,
   .chart-dot-wrap,
+  .chart-dot,
   .dial-value,
   .map-recenter,
   .screen > *,
   .screen-hike > * {
     animation: none;
   }
-  .meter > span, .btn, .dial-value, .cell, .seg button, .tabs button, .map-zoom button {
+  .meter > span, .btn, .dial-value, .cell, .seg button, .tabs button, .map-zoom button, .chart-dot-wrap {
     transition: none;
   }
 }

@@ -12,9 +12,11 @@ import type {
   Telemetry,
 } from './types';
 import { applyOffsets, packWh } from './units';
+import { createSeedHistory } from './sim/simulator';
 
 const SETTINGS_KEY = 'crankpack.settings.v1';
 const HISTORY_LIMIT = 180;
+const SEED_HISTORY_COUNT = 30;
 
 export const defaultSettings: Settings = {
   tempUnit: 'C',
@@ -210,6 +212,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch {
       // keep defaults
+    }
+    const { history } = get();
+    if (history.length === 0) {
+      set({ history: createSeedHistory(SEED_HISTORY_COUNT) });
     }
   },
 }));
