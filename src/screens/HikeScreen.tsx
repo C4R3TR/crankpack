@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Header } from './PowerScreen';
 import { useAppStore, useDisplayedTelemetry } from '../store';
@@ -41,6 +41,8 @@ export function HikeScreen() {
   const home = useHomeFix();
   const consumed = hike.active || hike.startedAt ? hike.startPct - t.batteryPct : 0;
   const elevation = Math.round(hike.active ? hike.elevationM : t.altitudeM);
+  const elevationValues = useMemo(() => hike.points.map((point) => point.alt), [hike.points]);
+  const elevationTimes = useMemo(() => hike.points.map((point) => point.t), [hike.points]);
 
   return (
     <section className="screen screen-hike">
@@ -107,10 +109,11 @@ export function HikeScreen() {
         <div className="group-pad">
           <Chart
             label="Elevation"
-            values={hike.points.map((p) => p.alt)}
+            values={elevationValues}
+            times={elevationTimes}
             unit=" m"
             decimals={0}
-            compact
+            height={112}
             emptyText="Start a hike to draw the route"
           />
         </div>

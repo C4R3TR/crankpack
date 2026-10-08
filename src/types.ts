@@ -46,6 +46,8 @@ export type ScannedDevice = {
   isCrankPack: boolean;
 };
 
+export type ChartWindow = '1m' | '5m' | '15m';
+
 export type Settings = {
   tempUnit: TempUnit;
   pressureUnit: PressureUnit;
@@ -57,6 +59,7 @@ export type Settings = {
   fullVoltage: number;
   useVoltageCurve: boolean;
   deviceAlias: string;
+  chartWindow: ChartWindow;
 };
 
 export type GeoPoint = {

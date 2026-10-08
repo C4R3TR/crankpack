@@ -14,7 +14,8 @@ import type {
 import { applyOffsets, packWh } from './units';
 
 const SETTINGS_KEY = 'crankpack.settings.v1';
-const HISTORY_LIMIT = 180;
+const HISTORY_LIMIT = 15 * 60;
+const HISTORY_EVERY_MS = 1000;
 
 export const defaultSettings: Settings = {
   tempUnit: 'C',
@@ -27,6 +28,7 @@ export const defaultSettings: Settings = {
   fullVoltage: 4.2,
   useVoltageCurve: false,
   deviceAlias: '',
+  chartWindow: '5m',
 };
 
 export const idleTelemetry: Telemetry = {
@@ -78,6 +80,7 @@ type AppState = {
   hike: HikeState;
   demoCranking: boolean;
   packets: number;
+  settingsOpen: boolean;
   ingestTelemetry: (raw: Telemetry) => void;
   setConnection: (connection: ConnectionStatus, extra?: { error?: string | null; connectedId?: string | null }) => void;
   setBleMeta: (available: boolean, reason: string | null) => void;
@@ -89,6 +92,7 @@ type AppState = {
   stopHike: () => void;
   updateHike: (patch: Partial<HikeState>) => void;
   hydrate: () => void;
+  setSettingsOpen: (open: boolean) => void;
 };
 
 function diagnose(t: Telemetry, connection: ConnectionStatus, packets: number): Diagnostics {
@@ -126,24 +130,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   hike: idleHike,
   demoCranking: false,
   packets: 0,
+  settingsOpen: false,
   ingestTelemetry: (raw) => {
     const packets = get().packets + 1;
     const history = get().history;
     const last = history[history.length - 1];
+    const point: HistoryPoint = {
+      t: raw.timestamp,
+      temperatureC: raw.temperatureC,
+      pressureHpa: raw.pressureHpa,
+      humidityPct: raw.humidityPct,
+      altitudeM: raw.altitudeM,
+      batteryPct: raw.batteryPct,
+      crankW: raw.crankW,
+    };
     const nextHistory =
-      !last || raw.timestamp - last.t >= 2000
-        ? [
-            ...history,
-            {
-              t: raw.timestamp,
-              temperatureC: raw.temperatureC,
-              pressureHpa: raw.pressureHpa,
-              humidityPct: raw.humidityPct,
-              altitudeM: raw.altitudeM,
-              batteryPct: raw.batteryPct,
-              crankW: raw.crankW,
-            },
-          ].slice(-HISTORY_LIMIT)
+      !last || raw.timestamp - last.t >= HISTORY_EVERY_MS
+        ? (history.length >= HISTORY_LIMIT ? history.slice(1) : history).concat(point)
         : history;
 
     const hike = get().hike;
@@ -202,6 +205,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   stopHike: () => set({ hike: { ...get().hike, active: false } }),
   updateHike: (patch) => set({ hike: { ...get().hike, ...patch } }),
+  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   hydrate: () => {
     try {
       const raw = localStorage.getItem(SETTINGS_KEY);

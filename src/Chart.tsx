@@ -1,14 +1,20 @@
-import { useId } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
+
+import { Segmented } from './Segmented';
+import { useAppStore } from './store';
+import type { ChartWindow, HistoryPoint } from './types';
+
+const WINDOWS: { value: ChartWindow; label: string; ms: number }[] = [
+  { value: '1m', label: '1 min', ms: 60_000 },
+  { value: '5m', label: '5 min', ms: 5 * 60_000 },
+  { value: '15m', label: '15 min', ms: 15 * 60_000 },
+];
 
 type Point = { x: number; y: number };
 
-/**
- * Catmull-Rom through every sample, emitted as cubic beziers. Sensor traces are
- * noisy, so a smooth line reads as a trend where a polyline reads as jitter.
- */
 function smoothPath(points: Point[]) {
   if (points.length < 2) return '';
-  let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  let d = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
   for (let i = 0; i < points.length - 1; i += 1) {
     const p0 = points[i - 1] ?? points[i];
     const p1 = points[i];
@@ -18,34 +24,120 @@ function smoothPath(points: Point[]) {
     const c1y = p1.y + (p2.y - p0.y) / 6;
     const c2x = p2.x - (p3.x - p1.x) / 6;
     const c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
   }
   return d;
+}
+
+/** Keep spikes visible while capping the path length so each update stays cheap. */
+function downsample(values: number[], times: number[], max = 96) {
+  if (values.length <= max) return { values, times };
+  const outV: number[] = [];
+  const outT: number[] = [];
+  const bucket = (values.length - 1) / (max - 1);
+  for (let i = 0; i < max; i += 1) {
+    if (i === max - 1) {
+      outV.push(values[values.length - 1]);
+      outT.push(times[times.length - 1]);
+      break;
+    }
+    const start = Math.floor(i * bucket);
+    const end = Math.max(start + 1, Math.floor((i + 1) * bucket));
+    let best = start;
+    const anchor = values[start];
+    for (let j = start; j < end && j < values.length; j += 1) {
+      if (Math.abs(values[j] - anchor) >= Math.abs(values[best] - anchor)) best = j;
+    }
+    outV.push(values[best]);
+    outT.push(times[best]);
+  }
+  return { values: outV, times: outT };
+}
+
+function formatTick(n: number, decimals: number) {
+  return n.toFixed(decimals);
+}
+
+function formatClock(t: number, spanMs: number) {
+  return new Date(t).toLocaleTimeString([], spanMs <= 120_000
+    ? { hour: 'numeric', minute: '2-digit', second: '2-digit' }
+    : { hour: 'numeric', minute: '2-digit' });
+}
+
+export function sliceHistory(points: HistoryPoint[], window: ChartWindow) {
+  const ms = WINDOWS.find((item) => item.value === window)?.ms ?? 5 * 60_000;
+  const cutoff = Date.now() - ms;
+  const sliced = points.filter((point) => point.t >= cutoff);
+  return sliced.length >= 2 ? sliced : points.slice(-2);
+}
+
+export function useChartSlice() {
+  const history = useAppStore((s) => s.history);
+  const window = useAppStore((s) => s.settings.chartWindow);
+  return useMemo(() => sliceHistory(history, window), [history, window]);
+}
+
+export function ChartRange() {
+  const value = useAppStore((s) => s.settings.chartWindow);
+  const patchSettings = useAppStore((s) => s.patchSettings);
+  return (
+    <Segmented
+      label="Chart history"
+      value={value}
+      onChange={(chartWindow) => patchSettings({ chartWindow })}
+      options={WINDOWS.map((item) => ({ value: item.value, label: item.label }))}
+    />
+  );
 }
 
 export function Chart({
   label,
   values,
+  times,
   unit = '',
   decimals = 1,
   tone = 'accent',
-  compact = false,
+  domain,
+  height = 168,
   emptyText = 'Waiting for samples',
 }: {
   label: string;
   values: number[];
+  times?: number[];
   unit?: string;
   decimals?: number;
   tone?: 'accent' | 'live';
-  compact?: boolean;
+  domain?: { min: number; max: number };
+  height?: number;
   emptyText?: string;
 }) {
   const gradientId = useId();
-  const width = 320;
-  const height = compact ? 64 : 104;
-  const pad = 6;
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [scrub, setScrub] = useState<number | null>(null);
 
-  if (values.length < 2) {
+  const domainMin = domain?.min;
+  const domainMax = domain?.max;
+  const geometry = useMemo(() => {
+    if (values.length < 2) return null;
+    const stamps = times && times.length === values.length ? times : values.map((_, i) => i);
+    const sampled = downsample(values, stamps);
+    const dataMin = Math.min(...sampled.values);
+    const dataMax = Math.max(...sampled.values);
+    const min = domainMin ?? dataMin;
+    const max = domainMax ?? dataMax;
+    const span = max - min || 1;
+    const top = 8;
+    const bottom = 92;
+    const points = sampled.values.map((v, i) => ({
+      x: (i / (sampled.values.length - 1)) * 100,
+      y: top + (1 - (v - min) / span) * (bottom - top),
+    }));
+    const line = smoothPath(points);
+    const ticks = [max, min + span / 2, min];
+    return { sampled, points, line, ticks, min, max, span };
+  }, [values, times, domainMin, domainMax]);
+
+  if (!geometry) {
     return (
       <div className="chart-block">
         <div className="chart-head">
@@ -56,79 +148,103 @@ export function Chart({
     );
   }
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min;
-  const current = values[values.length - 1];
+  const index = scrub == null ? geometry.sampled.values.length - 1 : scrub;
+  const shown = geometry.sampled.values[index];
+  const shownTime = geometry.sampled.times[index];
+  const here = geometry.points[index];
+  const spanMs =
+    typeof geometry.sampled.times[0] === 'number' && geometry.sampled.times[0] > 1_000_000_000
+      ? geometry.sampled.times[geometry.sampled.times.length - 1] - geometry.sampled.times[0]
+      : 0;
 
-  // Sparklines scale to their own range, so a 0.08-degree wiggle would fill the
-  // plot. Label the bounds at enough precision to tell them apart, otherwise
-  // the scale reads as a dramatic swing.
-  let boundDecimals = decimals;
-  while (boundDecimals < 3 && min.toFixed(boundDecimals) === max.toFixed(boundDecimals)) {
-    boundDecimals += 1;
-  }
-  const flat = min.toFixed(boundDecimals) === max.toFixed(boundDecimals);
-  const points = values.map((v, i) => ({
-    x: (i / (values.length - 1)) * width,
-    // A flat series draws through the middle rather than amplifying float noise.
-    y: flat ? height / 2 : height - pad - ((v - min) / span) * (height - pad * 2),
-  }));
-  const line = smoothPath(points);
-  const area = `${line} L ${width} ${height} L 0 ${height} Z`;
-  const here = points[points.length - 1];
+  const pick = (clientX: number) => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    setScrub(Math.round(x * (geometry.points.length - 1)));
+  };
+
+  const summary = `${label}, ${formatTick(shown, decimals)}${unit}${
+    spanMs ? `, ${formatClock(shownTime, spanMs)}` : ''
+  }. Drag across the chart to inspect earlier samples.`;
 
   return (
     <div className={`chart-block chart-${tone}`}>
       <div className="chart-head">
-        <span className="chart-label">{label}</span>
+        <span className="chart-label">{scrub == null ? label : 'At ' + (spanMs ? formatClock(shownTime, spanMs) : label)}</span>
         <span className="chart-now">
-          {current.toFixed(decimals)}
+          {formatTick(shown, decimals)}
           {unit ? <em>{unit}</em> : null}
         </span>
       </div>
-      {flat ? null : (
-        <div className="chart-bound" aria-hidden="true">
-          {max.toFixed(boundDecimals)}
-          {unit}
+      <div className="chart-frame" style={{ height }}>
+        <div className="chart-ylabels" aria-hidden="true">
+          {geometry.ticks.map((tick, i) => (
+            <span key={i}>{formatTick(tick, decimals)}</span>
+          ))}
         </div>
-      )}
-      <div className={`chart-plot ${compact ? 'chart-plot-compact' : ''}`}>
-        <svg
-          className={`chart ${compact ? 'chart-compact' : ''}`}
-          viewBox={`0 0 ${width} ${height}`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label={`${label}: now ${current.toFixed(decimals)}${unit}, range ${min.toFixed(decimals)} to ${max.toFixed(decimals)}${unit}`}
+        <div
+          ref={stageRef}
+          className="chart-stage"
+          role="slider"
+          tabIndex={0}
+          aria-label={summary}
+          aria-valuemin={0}
+          aria-valuemax={geometry.points.length - 1}
+          aria-valuenow={index}
+          aria-valuetext={`${formatTick(shown, decimals)}${unit}`}
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId);
+            pick(event.clientX);
+          }}
+          onPointerMove={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) pick(event.clientX);
+          }}
+          onPointerUp={() => setScrub(null)}
+          onPointerCancel={() => setScrub(null)}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowLeft') {
+              event.preventDefault();
+              setScrub(Math.max(0, index - 1));
+            } else if (event.key === 'ArrowRight') {
+              event.preventDefault();
+              setScrub(Math.min(geometry.points.length - 1, index + 1));
+            } else if (event.key === 'Home') {
+              event.preventDefault();
+              setScrub(0);
+            } else if (event.key === 'End' || event.key === 'Escape') {
+              event.preventDefault();
+              setScrub(null);
+            }
+          }}
+          onBlur={() => setScrub(null)}
         >
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop className="chart-stop-top" offset="0" />
-              <stop className="chart-stop-bottom" offset="1" />
-            </linearGradient>
-          </defs>
-          <path className="chart-fill" d={area} fill={`url(#${gradientId})`} />
-          <path className="chart-line" d={line} pathLength={1} vectorEffect="non-scaling-stroke" />
-        </svg>
-        <span
-          className="chart-dot-wrap"
-          style={{ left: `${(here.x / width) * 100}%`, top: `${(here.y / height) * 100}%` }}
-          aria-hidden="true"
-        >
-          <span className="chart-dot" />
-        </span>
+          <svg className="chart" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop className="chart-stop-top" offset="0" />
+                <stop className="chart-stop-bottom" offset="1" />
+              </linearGradient>
+            </defs>
+            {geometry.ticks.map((tick, i) => {
+              const y = 8 + (1 - (tick - geometry.min) / geometry.span) * 84;
+              return <line key={i} className="chart-grid" x1="0" y1={y} x2="100" y2={y} />;
+            })}
+            <path className="chart-fill" d={`${geometry.line} L 100 100 L 0 100 Z`} fill={`url(#${gradientId})`} />
+            <path className="chart-line" d={geometry.line} vectorEffect="non-scaling-stroke" />
+          </svg>
+          {scrub != null ? <span className="chart-rule" style={{ left: `${here.x}%` }} /> : null}
+          <span className="chart-dot-wrap" style={{ left: `${here.x}%`, top: `${here.y}%` }}>
+            <span className="chart-dot" />
+          </span>
+        </div>
       </div>
-      {flat ? (
-        <div className="chart-bound" aria-hidden="true">
-          Flat at {min.toFixed(decimals)}
-          {unit}
+      {spanMs ? (
+        <div className="chart-axis" aria-hidden="true">
+          <span>{formatClock(geometry.sampled.times[0], spanMs)}</span>
+          <span>{formatClock(geometry.sampled.times[geometry.sampled.times.length - 1], spanMs)}</span>
         </div>
-      ) : (
-        <div className="chart-bound" aria-hidden="true">
-          {min.toFixed(boundDecimals)}
-          {unit}
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }

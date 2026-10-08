@@ -1,16 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
+import { Chart, ChartRange, useChartSlice } from '../Chart';
+import { Segmented } from '../Segmented';
 import { useAppStore, useDisplayedTelemetry } from '../store';
 import { crankHint } from '../units';
-import { Chart } from '../Chart';
 
 export function PowerScreen() {
   const t = useDisplayedTelemetry();
   const connection = useAppStore((s) => s.connection);
-  const history = useAppStore((s) => s.history);
+  const series = useChartSlice();
   const setDemoCranking = useAppStore((s) => s.setDemoCranking);
+  const [metric, setMetric] = useState<'crank' | 'level'>('crank');
   const remainingAh = t.remainingMah / 1000;
   const low = t.batteryPct < 20;
+  const times = useMemo(() => series.map((point) => point.t), [series]);
+  const crank = useMemo(() => series.map((point) => point.crankW), [series]);
+  const level = useMemo(() => series.map((point) => point.batteryPct), [series]);
+  const crankMax = Math.max(12, ...crank, 0);
 
   return (
     <section className="screen">
@@ -19,7 +25,7 @@ export function PowerScreen() {
       <div className="power-hero">
         <BatteryDial pct={t.batteryPct} />
       </div>
-        <div className="hero-meta" style={{ textAlign: 'center', marginBottom: 16 }}>
+      <div className="hero-meta hero-meta-center">
         {t.charging ? 'Charging the pack' : low ? 'Low — crank to charge' : 'Ready to crank'}
       </div>
 
@@ -36,6 +42,42 @@ export function PowerScreen() {
           <strong>{remainingAh.toFixed(2)} Ah</strong>
           <span>Left</span>
         </div>
+      </div>
+
+      <div className="chart-toolbar">
+        <ChartRange />
+        <Segmented
+          label="Power chart"
+          value={metric}
+          onChange={setMetric}
+          options={[
+            { value: 'crank', label: 'Crank' },
+            { value: 'level', label: 'Level' },
+          ]}
+        />
+      </div>
+      <div className="group group-pad">
+        {metric === 'crank' ? (
+          <Chart
+            label="Crank power"
+            values={crank}
+            times={times}
+            unit=" W"
+            tone="live"
+            domain={{ min: 0, max: crankMax }}
+            emptyText="Crank to start the trace"
+          />
+        ) : (
+          <Chart
+            label="Pack level"
+            values={level}
+            times={times}
+            unit="%"
+            decimals={0}
+            domain={{ min: 0, max: 100 }}
+            emptyText="Waiting for samples"
+          />
+        )}
       </div>
 
       {connection === 'demo' ? (
@@ -72,26 +114,6 @@ export function PowerScreen() {
           <span className="cell-label">USB current</span>
           <span className="cell-value">{t.usbA.toFixed(2)} A</span>
         </div>
-      </div>
-
-      <div className="group group-pad">
-        <Chart
-          label="Crank power"
-          values={history.map((p) => p.crankW)}
-          unit=" W"
-          tone="live"
-          emptyText="Crank to start the trace"
-        />
-      </div>
-
-      <div className="group group-pad">
-        <Chart
-          label="Pack level"
-          values={history.map((p) => p.batteryPct)}
-          unit="%"
-          decimals={0}
-          emptyText="Waiting for samples"
-        />
       </div>
     </section>
   );
@@ -158,10 +180,20 @@ export function Header({ title }: { title: string }) {
           : connection === 'connecting'
             ? 'Connecting'
             : 'Offline';
+  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
   return (
     <div className="top">
       <h1 className="title">{title}</h1>
-      <div className={`status-text ${live ? 'live' : ''}`}>{label}</div>
+      <div className="top-actions">
+        <div className={`status-text ${live ? 'live' : ''}`}>{label}</div>
+        <button type="button" className="icon-btn" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 8h16M4 16h16" />
+            <circle cx="9" cy="8" r="2.2" />
+            <circle cx="15" cy="16" r="2.2" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }

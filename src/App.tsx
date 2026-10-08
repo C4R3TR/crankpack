@@ -6,6 +6,7 @@ import { PowerScreen } from './screens/PowerScreen';
 import { EnvironmentScreen } from './screens/EnvironmentScreen';
 import { HikeScreen } from './screens/HikeScreen';
 import { DeviceScreen } from './screens/DeviceScreen';
+import { SettingsScreen } from './screens/SettingsScreen';
 import { createDemoTelemetry } from './sim/simulator';
 import { useAppStore } from './store';
 
@@ -18,6 +19,8 @@ export function App() {
   const demoCranking = useAppStore((s) => s.demoCranking);
   const ingestTelemetry = useAppStore((s) => s.ingestTelemetry);
   const setBleMeta = useAppStore((s) => s.setBleMeta);
+  const settingsOpen = useAppStore((s) => s.settingsOpen);
+  const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
 
   useEffect(() => {
     hydrate();
@@ -38,8 +41,22 @@ export function App() {
     applyAppearance(mq.matches);
     const onChange = () => applyAppearance(mq.matches);
     mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, [hydrate, setBleMeta]);
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA';
+      if ((event.metaKey || event.ctrlKey) && event.key === ',' && !typing) {
+        event.preventDefault();
+        setSettingsOpen(true);
+      } else if (event.key === 'Escape') {
+        setSettingsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      mq.removeEventListener('change', onChange);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [hydrate, setBleMeta, setSettingsOpen]);
 
   useEffect(() => {
     if (connection !== 'demo') return;
@@ -58,13 +75,14 @@ export function App() {
 
   return (
     <div className="shell">
-      <div className="pane">
+      <div className="pane" inert={settingsOpen ? true : undefined} aria-hidden={settingsOpen || undefined}>
         {tab === 'power' ? <PowerScreen /> : null}
         {tab === 'environment' ? <EnvironmentScreen /> : null}
         {tab === 'hike' ? <HikeScreen /> : null}
         {tab === 'device' ? <DeviceScreen /> : null}
       </div>
-      <nav className="tabs" aria-label="Sections">
+      {settingsOpen ? <SettingsScreen /> : null}
+      <nav className="tabs" aria-label="Sections" hidden={settingsOpen}>
         <TabButton id="power" label="Power" current={tab} onClick={setTab} icon="battery" />
         <TabButton id="environment" label="Weather" current={tab} onClick={setTab} icon="thermo" />
         <TabButton id="hike" label="Hike" current={tab} onClick={setTab} icon="trail" />
