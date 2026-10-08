@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Chart, ChartRange, useChartSlice } from '../Chart';
 import { Header } from './PowerScreen';
 import { Segmented } from '../Segmented';
+import { ConnectionBanner } from '../components/ConnectionBanner';
 import { useAppStore, useDisplayedTelemetry } from '../store';
 import {
   displayPressure,
@@ -18,10 +19,17 @@ const trendLabel = {
   steady: 'Pressure steady',
 };
 
+const trendIcon = {
+  rising: '↑',
+  falling: '↓',
+  steady: '→',
+};
+
 type Metric = 'temp' | 'pressure' | 'humidity' | 'altitude';
 
 export function EnvironmentScreen() {
   const t = useDisplayedTelemetry();
+  const connection = useAppStore((s) => s.connection);
   const settings = useAppStore((s) => s.settings);
   const series = useChartSlice();
   const trend = pressureTrend(series);
@@ -29,6 +37,7 @@ export function EnvironmentScreen() {
   const times = useMemo(() => series.map((point) => point.t), [series]);
   const tempUnit = tempSuffix(settings.tempUnit);
   const pressureUnit = pressureSuffix(settings.pressureUnit);
+  const isLive = connection === 'connected' || connection === 'demo';
 
   const chart = useMemo(() => {
     if (metric === 'temp') {
@@ -81,12 +90,25 @@ export function EnvironmentScreen() {
     <section className="screen">
       <Header title="Weather" />
 
-      <div className="hero">
+      <ConnectionBanner />
+
+      <div className="hero weather-hero">
         <div className="hero-value">
-          {hero.value}
+          {isLive ? hero.value : '—'}
           <span>{hero.unit}</span>
         </div>
-        <div className="hero-meta">{hero.note}</div>
+        <div className="hero-meta">
+          {isLive ? (
+            <>
+              {metric === 'pressure' || metric === 'temp' ? (
+                <span className={`trend-icon trend-${trend}`}>{trendIcon[trend]}</span>
+              ) : null}
+              {hero.note}
+            </>
+          ) : (
+            'Connect to see weather'
+          )}
+        </div>
       </div>
 
       <div className="chart-toolbar">
@@ -112,10 +134,11 @@ export function EnvironmentScreen() {
           unit={chart.unit}
           decimals={chart.decimals}
           domain={'domain' in chart ? chart.domain : undefined}
+          emptyText={isLive ? 'Waiting for samples' : 'Connect to see weather trends'}
         />
       </div>
 
-      <div className="stats">
+      <div className="stats weather-stats">
         <div className="stat">
           <strong>
             {displayTemp(t.temperatureC, settings.tempUnit).toFixed(1)}

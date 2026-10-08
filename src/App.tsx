@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
@@ -7,13 +7,34 @@ import { EnvironmentScreen } from './screens/EnvironmentScreen';
 import { HikeScreen } from './screens/HikeScreen';
 import { DeviceScreen } from './screens/DeviceScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+import { Onboarding } from './components/Onboarding';
 import { createDemoTelemetry } from './sim/simulator';
 import { useAppStore } from './store';
 
 type Tab = 'power' | 'environment' | 'hike' | 'device';
 
+const ONBOARDING_KEY = 'crankpack.onboarded.v1';
+
+function useOnboarding() {
+  const [done, setDone] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(ONBOARDING_KEY);
+    setDone(stored === 'true');
+  }, []);
+
+  const complete = useCallback(() => {
+    localStorage.setItem(ONBOARDING_KEY, 'true');
+    setDone(true);
+  }, []);
+
+  return { done, complete };
+}
+
 export function App() {
   const [tab, setTab] = useState<Tab>('power');
+  const [transitioning, setTransitioning] = useState(false);
+  const prevTabRef = useRef<Tab>('power');
   const hydrate = useAppStore((s) => s.hydrate);
   const connection = useAppStore((s) => s.connection);
   const demoCranking = useAppStore((s) => s.demoCranking);
@@ -21,6 +42,7 @@ export function App() {
   const setBleMeta = useAppStore((s) => s.setBleMeta);
   const settingsOpen = useAppStore((s) => s.settingsOpen);
   const setSettingsOpen = useAppStore((s) => s.setSettingsOpen);
+  const { done: onboardingDone, complete: completeOnboarding } = useOnboarding();
 
   useEffect(() => {
     hydrate();
@@ -60,22 +82,64 @@ export function App() {
 
   useEffect(() => {
     if (connection !== 'demo') return;
-    const seed = useAppStore.getState().rawTelemetry.timestamp
-      ? useAppStore.getState().rawTelemetry
-      : null;
-    ingestTelemetry(createDemoTelemetry(seed, demoCranking, 0.5));
+    
+    const updateInterval = 250;
+    const dtSec = updateInterval / 1000;
+    
+    const getPrev = () => {
+      const state = useAppStore.getState();
+      return state.rawTelemetry.timestamp ? state.rawTelemetry : null;
+    };
+    
+    ingestTelemetry(createDemoTelemetry(getPrev(), demoCranking, dtSec));
+    
     const id = window.setInterval(() => {
-      const prev = useAppStore.getState().rawTelemetry.timestamp
-        ? useAppStore.getState().rawTelemetry
-        : null;
-      ingestTelemetry(createDemoTelemetry(prev, demoCranking, 0.5));
-    }, 500);
+      ingestTelemetry(createDemoTelemetry(getPrev(), demoCranking, dtSec));
+    }, updateInterval);
+    
     return () => window.clearInterval(id);
   }, [connection, demoCranking, ingestTelemetry]);
 
+  const handleTabChange = useCallback((newTab: Tab) => {
+    if (newTab === tab) return;
+    prevTabRef.current = tab;
+    setTransitioning(true);
+    setTab(newTab);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setTransitioning(false));
+    });
+  }, [tab]);
+
+  if (onboardingDone === null) {
+    return (
+      <div className="shell">
+        <div className="splash">
+          <div className="splash-logo">
+            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="24" cy="24" r="18" />
+              <path d="M24 12v24M14 24h20" />
+            </svg>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!onboardingDone) {
+    return (
+      <div className="shell">
+        <Onboarding onComplete={completeOnboarding} />
+      </div>
+    );
+  }
+
   return (
     <div className="shell">
-      <div className="pane" inert={settingsOpen ? true : undefined} aria-hidden={settingsOpen || undefined}>
+      <div
+        className={`pane ${transitioning ? 'pane-transitioning' : ''}`}
+        inert={settingsOpen ? true : undefined}
+        aria-hidden={settingsOpen || undefined}
+      >
         {tab === 'power' ? <PowerScreen /> : null}
         {tab === 'environment' ? <EnvironmentScreen /> : null}
         {tab === 'hike' ? <HikeScreen /> : null}
@@ -83,10 +147,10 @@ export function App() {
       </div>
       {settingsOpen ? <SettingsScreen /> : null}
       <nav className="tabs" aria-label="Sections" hidden={settingsOpen}>
-        <TabButton id="power" label="Power" current={tab} onClick={setTab} icon="battery" />
-        <TabButton id="environment" label="Weather" current={tab} onClick={setTab} icon="thermo" />
-        <TabButton id="hike" label="Hike" current={tab} onClick={setTab} icon="trail" />
-        <TabButton id="device" label="Device" current={tab} onClick={setTab} icon="gear" />
+        <TabButton id="power" label="Power" current={tab} onClick={handleTabChange} icon="battery" />
+        <TabButton id="environment" label="Weather" current={tab} onClick={handleTabChange} icon="thermo" />
+        <TabButton id="hike" label="Hike" current={tab} onClick={handleTabChange} icon="trail" />
+        <TabButton id="device" label="Device" current={tab} onClick={handleTabChange} icon="gear" />
       </nav>
     </div>
   );

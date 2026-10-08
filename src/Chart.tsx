@@ -11,6 +11,38 @@ const WINDOWS: { value: ChartWindow; label: string; ms: number }[] = [
 ];
 
 type Point = { x: number; y: number };
+type Smoothing = 'none' | 'light' | 'balanced' | 'heavy';
+
+function movingAverage(values: number[], windowSize: number): number[] {
+  if (values.length <= windowSize) return values;
+  const result: number[] = [];
+  const half = Math.floor(windowSize / 2);
+  for (let i = 0; i < values.length; i += 1) {
+    const start = Math.max(0, i - half);
+    const end = Math.min(values.length, i + half + 1);
+    let sum = 0;
+    for (let j = start; j < end; j += 1) sum += values[j];
+    result.push(sum / (end - start));
+  }
+  return result;
+}
+
+function exponentialSmooth(values: number[], alpha: number): number[] {
+  if (values.length === 0) return [];
+  const result: number[] = [values[0]];
+  for (let i = 1; i < values.length; i += 1) {
+    result.push(alpha * values[i] + (1 - alpha) * result[i - 1]);
+  }
+  return result;
+}
+
+function applySmoothing(values: number[], smoothing: Smoothing): number[] {
+  if (values.length < 2) return values;
+  if (smoothing === 'light') return exponentialSmooth(values, 0.6);
+  if (smoothing === 'balanced') return movingAverage(exponentialSmooth(values, 0.5), 3);
+  if (smoothing === 'heavy') return movingAverage(exponentialSmooth(values, 0.35), 5);
+  return values;
+}
 
 function smoothPath(points: Point[]) {
   if (points.length < 2) return '';
@@ -100,6 +132,8 @@ export function Chart({
   domain,
   height = 168,
   emptyText = 'Waiting for samples',
+  compact = false,
+  smoothing = 'none',
 }: {
   label: string;
   values: number[];
@@ -110,17 +144,21 @@ export function Chart({
   domain?: { min: number; max: number };
   height?: number;
   emptyText?: string;
+  compact?: boolean;
+  smoothing?: Smoothing;
 }) {
   const gradientId = useId();
   const stageRef = useRef<HTMLDivElement>(null);
   const [scrub, setScrub] = useState<number | null>(null);
+  const plotHeight = compact ? 64 : height;
 
   const domainMin = domain?.min;
   const domainMax = domain?.max;
   const geometry = useMemo(() => {
     if (values.length < 2) return null;
-    const stamps = times && times.length === values.length ? times : values.map((_, i) => i);
-    const sampled = downsample(values, stamps);
+    const smoothed = applySmoothing(values, smoothing);
+    const stamps = times && times.length === smoothed.length ? times : smoothed.map((_, i) => i);
+    const sampled = downsample(smoothed, stamps);
     const dataMin = Math.min(...sampled.values);
     const dataMax = Math.max(...sampled.values);
     const min = domainMin ?? dataMin;
@@ -135,7 +173,7 @@ export function Chart({
     const line = smoothPath(points);
     const ticks = [max, min + span / 2, min];
     return { sampled, points, line, ticks, min, max, span };
-  }, [values, times, domainMin, domainMax]);
+  }, [values, times, domainMin, domainMax, smoothing]);
 
   if (!geometry) {
     return (
@@ -177,7 +215,7 @@ export function Chart({
           {unit ? <em>{unit}</em> : null}
         </span>
       </div>
-      <div className="chart-frame" style={{ height }}>
+      <div className="chart-frame" style={{ height: plotHeight }}>
         <div className="chart-ylabels" aria-hidden="true">
           {geometry.ticks.map((tick, i) => (
             <span key={i}>{formatTick(tick, decimals)}</span>
