@@ -43,17 +43,20 @@ export function HikeScreen() {
   const selectedActivityId = useAppStore((s) => s.selectedActivityId);
   const t = useDisplayedTelemetry();
   const home = useHomeFix();
+  const [saveNote, setSaveNote] = useState<string | null>(null);
   const consumed = hike.active || hike.startedAt ? hike.startPct - t.batteryPct : 0;
 
   const handleStopHike = () => {
     stopHike();
     stopHikeTracking();
-    saveActivity();
+    const saved = saveActivity();
+    setSaveNote(saved ? null : 'That hike was under 50 m, so it was not saved.');
   };
 
   const handleStartHike = () => {
+    setSaveNote(null);
     startHike();
-    startHikeTracking();
+    void startHikeTracking();
   };
 
   const paceMinPerKm = hike.avgSpeedKmh > 0 ? 60 / hike.avgSpeedKmh : 0;
@@ -150,6 +153,7 @@ export function HikeScreen() {
         <button
           type="button"
           className="start-hike-btn"
+          aria-label="Start hike"
           onClick={handleStartHike}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -159,6 +163,7 @@ export function HikeScreen() {
         </button>
       </div>
 
+      {saveNote ? <p className="save-note">{saveNote}</p> : null}
       <WeeklyStats />
       <PersonalRecords />
       

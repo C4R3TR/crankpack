@@ -145,7 +145,12 @@ export function App() {
         {tab === 'hike' ? <HikeScreen /> : null}
         {tab === 'device' ? <DeviceScreen /> : null}
       </div>
-      {settingsOpen ? <SettingsScreen /> : null}
+      {settingsOpen ? (
+        <>
+          <button type="button" className="sheet-scrim" aria-label="Close settings" onClick={() => setSettingsOpen(false)} />
+          <SettingsScreen />
+        </>
+      ) : null}
       <nav className="tabs" aria-label="Sections" hidden={settingsOpen}>
         <TabButton id="power" label="Power" current={tab} onClick={handleTabChange} icon="battery" />
         <TabButton id="environment" label="Weather" current={tab} onClick={handleTabChange} icon="thermo" />

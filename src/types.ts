@@ -76,6 +76,7 @@ export type HikeState = {
   distanceM: number;
   elevationM: number;
   elevationGainM: number;
+  elevationPendingM: number;
   avgSpeedKmh: number;
   points: GeoPoint[];
   startWh: number;

@@ -19,6 +19,7 @@ export function ActivityDetail() {
   const handleStartEdit = () => {
     setName(activity.name);
     setEditing(true);
+    setShowDelete(false);
   };
   
   const handleSaveName = () => {
@@ -54,12 +55,12 @@ export function ActivityDetail() {
     <div className="activity-detail-overlay" onClick={handleClose}>
       <div className="activity-detail" onClick={(e) => e.stopPropagation()}>
         <div className="activity-detail-header">
-          <button type="button" className="activity-detail-close" onClick={handleClose}>
+          <button type="button" className="activity-detail-close" aria-label="Close" onClick={handleClose}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
-          <button type="button" className="activity-detail-more" onClick={() => setShowDelete(!showDelete)}>
+          <button type="button" className="activity-detail-more" aria-label="More" aria-expanded={showDelete} onClick={() => setShowDelete(!showDelete)}>
             <svg viewBox="0 0 24 24" fill="currentColor">
               <circle cx="12" cy="5" r="2" />
               <circle cx="12" cy="12" r="2" />

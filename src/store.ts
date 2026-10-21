@@ -71,6 +71,7 @@ const idleHike: HikeState = {
   distanceM: 0,
   elevationM: 0,
   elevationGainM: 0,
+  elevationPendingM: 0,
   avgSpeedKmh: 0,
   points: [],
   startWh: 0,
@@ -92,8 +93,49 @@ const defaultRecords: PersonalRecords = {
   longestDurationActivityId: null,
 };
 
+function localDayIndex(value: string | number) {
+  const date = new Date(value);
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000;
+}
+
 function generateActivityId(): string {
   return `act_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function scoreRecords(activities: Activity[]): PersonalRecords {
+  const records: PersonalRecords = { ...defaultRecords };
+  for (const activity of activities) {
+    if (activity.distanceM > records.longestDistanceM) {
+      records.longestDistanceM = activity.distanceM;
+      records.longestDistanceActivityId = activity.id;
+    }
+    if (activity.elevationGainM > records.mostElevationGainM) {
+      records.mostElevationGainM = activity.elevationGainM;
+      records.mostElevationActivityId = activity.id;
+    }
+    if (activity.generatedWh > records.mostEnergyGeneratedWh) {
+      records.mostEnergyGeneratedWh = activity.generatedWh;
+      records.mostEnergyActivityId = activity.id;
+    }
+    if (activity.elapsedMs > records.longestDurationMs) {
+      records.longestDurationMs = activity.elapsedMs;
+      records.longestDurationActivityId = activity.id;
+    }
+    if (activity.distanceM > 1000 && activity.avgSpeedKmh > 0) {
+      const paceMinPerKm = 60 / activity.avgSpeedKmh;
+      if (paceMinPerKm < records.fastestPaceMinPerKm) {
+        records.fastestPaceMinPerKm = paceMinPerKm;
+        records.fastestPaceActivityId = activity.id;
+      }
+    }
+  }
+  return records;
+}
+
+function reviveRecords(parsed: PersonalRecords): PersonalRecords {
+  const records = { ...defaultRecords, ...parsed };
+  if (!Number.isFinite(records.fastestPaceMinPerKm)) records.fastestPaceMinPerKm = Infinity;
+  return records;
 }
 
 function getWeekStart(timestamp: number): number {
@@ -153,6 +195,33 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+const ACHIEVEMENT_TYPES: AchievementType[] = [
+  'first_hike',
+  'distance_5k',
+  'distance_10k',
+  'distance_marathon',
+  'elevation_500m',
+  'elevation_1000m',
+  'energy_10wh',
+  'energy_50wh',
+  'energy_100wh',
+  'streak_3_days',
+  'streak_7_days',
+  'early_bird',
+  'night_owl',
+];
+
+function uniqueAchievements(list: Achievement[]): Achievement[] {
+  const seen = new Set<AchievementType>();
+  const next: Achievement[] = [];
+  for (const item of list) {
+    if (!ACHIEVEMENT_TYPES.includes(item.type) || seen.has(item.type) || !Number.isFinite(item.unlockedAt)) continue;
+    seen.add(item.type);
+    next.push(item);
+  }
+  return next;
+}
+
 function checkAchievements(
   activity: Activity,
   activities: Activity[],
@@ -201,19 +270,15 @@ function checkAchievements(
   }
   
   if (!has('streak_3_days') || !has('streak_7_days')) {
-    const allActivities = [...activities, activity];
-    const days = new Set(allActivities.map(a => new Date(a.startedAt).toDateString()));
-    const sortedDays = Array.from(days).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-    
+    const days = [...new Set([...activities, activity].map((item) => localDayIndex(item.startedAt)))].sort((a, b) => a - b);
     let streak = 1;
-    let maxStreak = 1;
-    for (let i = 1; i < sortedDays.length; i++) {
-      const prev = new Date(sortedDays[i - 1]).getTime();
-      const curr = new Date(sortedDays[i]).getTime();
-      if (curr - prev === 86400000) {
+    let maxStreak = days.length > 0 ? 1 : 0;
+    for (let i = 1; i < days.length; i++) {
+      const gap = days[i] - days[i - 1];
+      if (gap === 1) {
         streak++;
         maxStreak = Math.max(maxStreak, streak);
-      } else {
+      } else if (gap > 1) {
         streak = 1;
       }
     }
@@ -262,7 +327,7 @@ type AppState = {
   selectActivity: (id: string | null) => void;
   deleteActivity: (id: string) => void;
   renameActivity: (id: string, name: string) => void;
-  dismissNewAchievements: () => void;
+  dismissNewAchievements: (type?: AchievementType) => void;
   hydrate: () => void;
   setSettingsOpen: (open: boolean) => void;
 };
@@ -411,48 +476,30 @@ export const useAppStore = create<AppState>((set, get) => ({
       generatedWh: hike.generatedWh,
       usedWh: hike.usedWh,
       startPct: hike.startPct,
-      endPct: telemetry.batteryPct,
+      endPct: applyOffsets(telemetry, get().settings).batteryPct,
       points: hike.points,
       elevationProfile: hike.points.map(p => p.alt),
       splits: calculateSplits(hike.points, hike.generatedWh),
     };
     
     const activities = [activity, ...get().activities].slice(0, MAX_ACTIVITIES);
+    const records = scoreRecords(activities);
     
-    const records = { ...get().records };
-    if (activity.distanceM > records.longestDistanceM) {
-      records.longestDistanceM = activity.distanceM;
-      records.longestDistanceActivityId = activity.id;
-    }
-    if (activity.elevationGainM > records.mostElevationGainM) {
-      records.mostElevationGainM = activity.elevationGainM;
-      records.mostElevationActivityId = activity.id;
-    }
-    if (activity.generatedWh > records.mostEnergyGeneratedWh) {
-      records.mostEnergyGeneratedWh = activity.generatedWh;
-      records.mostEnergyActivityId = activity.id;
-    }
-    if (activity.elapsedMs > records.longestDurationMs) {
-      records.longestDurationMs = activity.elapsedMs;
-      records.longestDurationActivityId = activity.id;
-    }
-    if (activity.distanceM > 1000 && activity.avgSpeedKmh > 0) {
-      const paceMinPerKm = 60 / activity.avgSpeedKmh;
-      if (paceMinPerKm < records.fastestPaceMinPerKm) {
-        records.fastestPaceMinPerKm = paceMinPerKm;
-        records.fastestPaceActivityId = activity.id;
-      }
-    }
-    
-    const existingAchievements = get().achievements;
+    const existingAchievements = uniqueAchievements(get().achievements);
     const newAchievements = checkAchievements(activity, get().activities, existingAchievements);
-    const achievements = [...existingAchievements, ...newAchievements];
+    const achievements = uniqueAchievements([...existingAchievements, ...newAchievements]);
     
     localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(activities));
     localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
     localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(achievements));
     
-    set({ activities, records, achievements, newAchievements });
+    set({
+      activities,
+      records,
+      achievements,
+      newAchievements,
+      hike: { ...idleHike },
+    });
     return activity;
   },
   updateHike: (patch) => set({ hike: { ...get().hike, ...patch } }),
@@ -460,15 +507,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectActivity: (id) => set({ selectedActivityId: id }),
   deleteActivity: (id) => {
     const activities = get().activities.filter(a => a.id !== id);
+    const records = scoreRecords(activities);
     localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(activities));
-    set({ activities, selectedActivityId: null });
+    localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+    set({ activities, records, selectedActivityId: null });
   },
   renameActivity: (id, name) => {
     const activities = get().activities.map(a => a.id === id ? { ...a, name } : a);
     localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(activities));
     set({ activities });
   },
-  dismissNewAchievements: () => set({ newAchievements: [] }),
+  dismissNewAchievements: (type) => {
+    if (!type) {
+      set({ newAchievements: [] });
+      return;
+    }
+    set({ newAchievements: get().newAchievements.filter((item) => item.type !== type) });
+  },
   hydrate: () => {
     try {
       const raw = localStorage.getItem(SETTINGS_KEY);
@@ -491,7 +546,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const recordsRaw = localStorage.getItem(RECORDS_KEY);
       if (recordsRaw) {
-        set({ records: { ...defaultRecords, ...(JSON.parse(recordsRaw) as PersonalRecords) } });
+        set({ records: reviveRecords(JSON.parse(recordsRaw) as PersonalRecords) });
       }
     } catch {
       // keep defaults
@@ -500,7 +555,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const achievementsRaw = localStorage.getItem(ACHIEVEMENTS_KEY);
       if (achievementsRaw) {
-        set({ achievements: JSON.parse(achievementsRaw) as Achievement[] });
+        const achievements = uniqueAchievements(JSON.parse(achievementsRaw) as Achievement[]);
+        localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(achievements));
+        set({ achievements });
       }
     } catch {
       // keep defaults

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 import { sendCommand } from '../ble/client';
 import { Segmented } from '../Segmented';
@@ -49,8 +49,30 @@ export function SettingsScreen() {
     setBusy(false);
   };
 
+  const onGrabberDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const startY = event.clientY;
+    const sheet = event.currentTarget.parentElement;
+    if (!sheet) return;
+    const move = (ev: PointerEvent) => {
+      const dy = Math.max(0, ev.clientY - startY);
+      sheet.style.setProperty('--sheet-y', `${dy}px`);
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (ev.clientY - startY > 72) {
+        setSettingsOpen(false);
+        return;
+      }
+      sheet.style.setProperty('--sheet-y', '0px');
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   return (
     <section className="screen settings-sheet" aria-label="Settings">
+      <div className="sheet-grabber" aria-hidden="true" onPointerDown={onGrabberDown} />
       <div className="top">
         <h1 className="title">Settings</h1>
         <button type="button" className="text-btn" onClick={() => setSettingsOpen(false)}>

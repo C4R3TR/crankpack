@@ -57,6 +57,12 @@ export function Achievements() {
             <div
               key={type}
               className={`achievement-badge ${unlocked ? 'unlocked' : 'locked'}`}
+              role="img"
+              aria-label={
+                unlocked
+                  ? `${info.name}, unlocked. ${info.description}`
+                  : `${info.name}, locked. ${info.description}`
+              }
               title={unlocked ? `Unlocked ${new Date(achievement!.unlockedAt).toLocaleDateString()}` : info.description}
             >
               <span className="achievement-icon">{info.icon}</span>
@@ -88,7 +94,7 @@ export function NewAchievementToast() {
               <span className="achievement-toast-name">{info.name}</span>
               <span className="achievement-toast-desc">{info.description}</span>
             </div>
-            <button type="button" className="achievement-toast-close" onClick={dismiss}>
+            <button type="button" className="achievement-toast-close" aria-label={`Dismiss ${info.name}`} onClick={() => dismiss(achievement.type)}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>

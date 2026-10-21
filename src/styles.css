@@ -622,18 +622,49 @@ input:focus {
   font-weight: 650;
   color: var(--accent);
 }
+.sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: rgba(23, 32, 26, 0.36);
+}
 .settings-sheet {
+  --sheet-y: 0px;
   position: fixed;
   z-index: 30;
-  top: 0;
+  top: auto;
   bottom: 0;
   left: 50%;
   width: min(430px, 100%);
-  transform: translateX(-50%);
+  height: min(92dvh, 100%);
+  min-height: 0;
+  transform: translateX(-50%) translateY(var(--sheet-y));
   overflow: auto;
   background: var(--bg);
   margin: 0;
-  padding-bottom: calc(28px + var(--safe-bottom));
+  padding: 8px 20px calc(28px + var(--safe-bottom));
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -16px 48px rgba(23, 32, 26, 0.2);
+  transition: transform 0.28s var(--ease);
+  scrollbar-width: thin;
+  scrollbar-color: var(--separator) transparent;
+}
+.settings-sheet::-webkit-scrollbar { width: 8px; }
+.settings-sheet::-webkit-scrollbar-thumb {
+  background: var(--separator);
+  border-radius: 99px;
+}
+.sheet-grabber {
+  width: 36px;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--separator);
+  margin: 4px auto 8px;
+  touch-action: none;
+  cursor: grab;
 }
 .cell-stack {
   flex-direction: column;
@@ -849,13 +880,16 @@ input:focus {
   gap: 3px;
   min-height: 50px;
   margin: 0 2px;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   border-radius: 999px;
 }
 .tabs button.on {
-  color: var(--accent-on);
-  background: var(--accent-fill);
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg-raised) 78%, transparent);
+}
+.tabs button.on svg {
+  color: var(--live-fill);
 }
 .tabs svg { width: 22px; height: 22px; }
 
@@ -901,6 +935,7 @@ input:focus {
 .map-recenter { animation: rise 0.28s var(--ease) both; }
 
 @media (prefers-reduced-motion: reduce) {
+  .settings-sheet { transition: none; }
   .status-text.live::before,
   .btn.charging,
   .chart-line,
@@ -1732,6 +1767,15 @@ button.cell:active::after {
   width: 28px;
   height: 28px;
 }
+.save-note {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--bg-inset);
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
 
 /* Weekly Stats */
 .weekly-stats {
@@ -1820,7 +1864,7 @@ button.cell:active::after {
   font-variant-numeric: tabular-nums;
 }
 .weekly-stat-label {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-tertiary);
 }
 
@@ -1951,7 +1995,7 @@ button.cell:active::after {
   color: var(--live);
 }
 .activity-stat-label {
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--text-tertiary);
   text-transform: uppercase;
@@ -2158,7 +2202,7 @@ button.cell:active::after {
   font-variant-numeric: tabular-nums;
 }
 .activity-grid-label {
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   color: var(--text-tertiary);
 }
 
@@ -2265,7 +2309,7 @@ button.cell:active::after {
   margin-bottom: 6px;
 }
 .achievement-name {
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-secondary);
   line-height: 1.2;
@@ -2274,14 +2318,15 @@ button.cell:active::after {
   position: absolute;
   top: 6px;
   right: 6px;
-  font-size: 0.625rem;
+  font-size: 0.75rem;
 }
 
 .achievement-toast-container {
   position: fixed;
   top: calc(var(--safe-top) + 16px);
-  left: 16px;
-  right: 16px;
+  left: 50%;
+  width: min(398px, calc(100% - 32px));
+  transform: translateX(-50%);
   z-index: 300;
   display: flex;
   flex-direction: column;
@@ -2448,7 +2493,7 @@ button.cell:active::after {
   font-variant-numeric: tabular-nums;
 }
 .live-card-label {
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   color: var(--text-tertiary);
 }
 

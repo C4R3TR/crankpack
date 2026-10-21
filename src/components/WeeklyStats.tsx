@@ -123,7 +123,7 @@ export function PersonalRecords() {
           </button>
         )}
         
-        {records.mostEnergyGeneratedWh > 0 && (
+        {records.mostEnergyGeneratedWh >= 0.05 && (
           <button
             type="button"
             className="record-card highlight"
